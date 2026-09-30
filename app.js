@@ -62,6 +62,7 @@ function load(){
   }catch(e){return clone(DEFAULT)}
 }
 function save(){
+  state._localUpdatedAt=nowISO();
   localStorage.setItem(STORE,JSON.stringify(state));
   scheduleCloudSync();
 }
@@ -71,22 +72,42 @@ async function pushStateToCloud(){
   if(!cloudUser||!supabaseClient)return;
   setCloudStatus('syncing');
   try{
-    const payload={...state,_cloudUpdatedAt:nowISO()};
+    const stamp=state._localUpdatedAt||nowISO();
+    const payload={...state,_cloudUpdatedAt:stamp};
     const {error}=await supabaseClient.from('app_state').upsert({user_id:cloudUser.id,state:payload,updated_at:nowISO()},{onConflict:'user_id'});
     if(error)throw error;
+    state._cloudUpdatedAt=stamp;
+    localStorage.setItem(STORE,JSON.stringify(state));
     setCloudStatus('synced');
   }catch(e){console.error(e);setCloudStatus('error');}
 }
 function mergeStates(local,remote){
-  const out={...clone(DEFAULT),...remote,...local};
-  out.profile={...DEFAULT.profile,...(remote.profile||{}),...(local.profile||{})};
-  out.settings={...DEFAULT.settings,...(remote.settings||{}),...(local.settings||{})};
-  out.checkins={...(remote.checkins||{}),...(local.checkins||{})};
-  out.progression={...(remote.progression||{}),...(local.progression||{})};
-  const uniq=(arr=[])=>{const seen=new Set();return arr.filter(x=>{const k=JSON.stringify(x);if(seen.has(k))return false;seen.add(k);return true;});};
-  out.sessions=uniq([...(remote.sessions||[]),...(local.sessions||[])]).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
-  out.weightLog=uniq([...(remote.weightLog||[]),...(local.weightLog||[])]);
-  out.notes=uniq([...(remote.notes||[]),...(local.notes||[])]);
+  const lt=new Date(local?._localUpdatedAt||local?._cloudUpdatedAt||0).getTime()||0;
+  const rt=new Date(remote?._cloudUpdatedAt||remote?._localUpdatedAt||0).getTime()||0;
+  const remoteNewer=rt>lt;
+  const primary=remoteNewer?remote:local;
+  const secondary=remoteNewer?local:remote;
+  const out={...clone(DEFAULT),...secondary,...primary};
+  out.profile={...DEFAULT.profile,...(secondary?.profile||{}),...(primary?.profile||{})};
+  out.settings={...DEFAULT.settings,...(secondary?.settings||{}),...(primary?.settings||{})};
+  out.checkins={...(secondary?.checkins||{}),...(primary?.checkins||{})};
+  out.progression={...(secondary?.progression||{}),...(primary?.progression||{})};
+  const sessionMap=new Map();
+  for(const x of [...(remote?.sessions||[]),...(local?.sessions||[])]){
+    const k=x.id||`${x.date||''}|${x.routine||''}|${x.durationMin||''}`;
+    sessionMap.set(k,x);
+  }
+  out.sessions=[...sessionMap.values()].sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+  const weightMap=new Map();
+  for(const x of [...(remote?.weightLog||[]),...(local?.weightLog||[])]){
+    const k=x.date||x.timestamp||JSON.stringify(x);
+    const prev=weightMap.get(k);
+    if(!prev || new Date(x.timestamp||0)>new Date(prev.timestamp||0)) weightMap.set(k,x);
+  }
+  out.weightLog=[...weightMap.values()].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+  out.notes=[...(remote?.notes||[]),...(local?.notes||[])].filter((x,i,a)=>a.findIndex(y=>JSON.stringify(y)===JSON.stringify(x))===i);
+  const newest=Math.max(lt,rt);
+  if(newest) out._localUpdatedAt=new Date(newest).toISOString();
   return out;
 }
 async function pullAndMergeCloud(){
@@ -164,8 +185,12 @@ function renderExercises(){
   return`<div class="section-title">Biblioteca</div>${EXERCISES.map(e=>`<section class="card flat exercise"><div><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill">Riesgo ${e.risk}</span></div><h3>${e.name}</h3><p>${e.group} · ${e.equip}</p></div><button class="btn small secondary" data-ex="${e.id}">Ficha</button></section>`).join('')}`;
 }
 function renderProgress(){
-  const st=progressStats(),last=state.sessions.at(-1);
+  const st=progressStats(),last=state.sessions.at(-1),weights=state.weightLog||[];
+  const prev=weights.length>1?Number(weights.at(-2).weight):null;
+  const current=Number(state.profile.weight)||0;
+  const delta=prev===null?'':`${current-prev>0?'+':''}${(current-prev).toFixed(1)} kg vs registro previo`;
   return`<div class="section-title">Progreso</div><section class="grid two">
+    <div class="metric"><div class="value">${current?current.toFixed(1):'—'}</div><div class="label">peso actual · kg</div>${delta?`<div class="tiny">${delta}</div>`:''}</div>
     <div class="metric"><div class="value">${st.completed}</div><div class="label">sesiones / 7 días</div></div><div class="metric"><div class="value">${st.cardio}</div><div class="label">min cardio / 7 días</div></div>
   </section><section class="card"><h3>Volumen de fuerza · 7 días</h3><canvas id="volChart" class="chart" width="720" height="220"></canvas></section><section class="card"><h3>Adherencia · 7 días</h3><canvas id="adhChart" class="chart" width="720" height="220"></canvas></section>
   <section class="card flat"><h3>Última sesión</h3><p class="muted">${last?`${new Date(last.date).toLocaleString('es-MX')} · ${last.routine} · ${last.durationMin||'—'} min`:'Aún no hay sesiones registradas.'}</p></section>`;
@@ -188,7 +213,17 @@ function bindCommon(){
   $$('[data-ex]').forEach(b=>b.onclick=()=>openExercise(b.dataset.ex));
   $$('[data-day]').forEach(b=>b.onclick=()=>openRoutine(+b.dataset.day));
   const g=$('#startGoalkeeper');if(g)g.onclick=()=>startWorkout('goalkeeper');
-  const ss=$('#saveSettings');if(ss)ss.onclick=()=>{state.profile.weight=+$('#profileWeight').value||state.profile.weight;state.profile.trainingHour=$('#trainingHour').value||'19:00';save();alert('Ajustes guardados.');};
+  const ss=$('#saveSettings');if(ss)ss.onclick=()=>{
+    const newWeight=Number($('#profileWeight').value);
+    if(Number.isFinite(newWeight)&&newWeight>0&&newWeight!==Number(state.profile.weight)){
+      state.profile.weight=newWeight;
+      const day=localKey(), stamp=nowISO();
+      state.weightLog=(state.weightLog||[]).filter(x=>x.date!==day);
+      state.weightLog.push({date:day,weight:newWeight,timestamp:stamp});
+    }
+    state.profile.trainingHour=$('#trainingHour').value||'19:00';
+    save();render();alert('Ajustes guardados y peso actualizado.');
+  };
   const ej=$('#exportJson');if(ej)ej.onclick=exportJSON;const ec=$('#exportCsv');if(ec)ec.onclick=exportCSV;const imp=$('#importJson');if(imp)imp.onchange=importJSON;
   const rn=$('#requestNotify');if(rn)rn.onclick=async()=>{if(!('Notification'in window))return alert('Este navegador no soporta notificaciones.');const p=await Notification.requestPermission();alert('Permiso: '+p);};
   const sin=$('#signInBtn');if(sin)sin.onclick=async()=>{const email=$('#authEmail').value.trim(),password=$('#authPassword').value;const msg=$('#authMsg');try{msg.textContent='Conectando…';await authSignIn(email,password);msg.textContent='Sesión iniciada.';}catch(e){msg.textContent=e.message||'No se pudo iniciar sesión.';}};

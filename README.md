@@ -43,3 +43,7 @@ Las notificaciones incluidas dependen de que el navegador o la PWA pueda ejecuta
 ## V2.1
 - El dolor de rodilla o abdomen >3/10 dispara una alerta adaptativa inmediatamente al mover el control.
 - El panel de dolor cambia a estado visual de riesgo.
+
+
+## V2.3
+Corrige sincronización de peso entre dispositivos, registra historial de peso y muestra peso actual en Progreso.
