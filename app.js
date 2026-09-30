@@ -231,8 +231,36 @@ function bindCommon(){
   const sync=$('#syncNow');if(sync)sync.onclick=()=>pullAndMergeCloud();
   const so=$('#signOutBtn');if(so)so.onclick=()=>authSignOut();
 }
-function openModal(html,cls=''){const t=$('#modalTpl').content.cloneNode(true);const card=$('.modal-card',t);if(cls)card.classList.add(cls);$('.modal-body',t).innerHTML=html;document.body.appendChild(t);const back=$('.modal-backdrop');$('.modal-close',back).onclick=()=>closeModal(back);return back;}
-function closeModal(m){if(restTimer){clearInterval(restTimer);restTimer=null;}m?.remove();}
+function openModal(html,cls=''){
+  const t=$('#modalTpl').content.cloneNode(true);
+  const back=t.querySelector('.modal-backdrop');
+  const card=back.querySelector('.modal-card');
+  if(cls)card.classList.add(cls);
+  back.querySelector('.modal-body').innerHTML=html;
+  const closeBtn=back.querySelector('.modal-close');
+  const requestClose=()=>{
+    if(back.classList.contains('workout-overlay')&&activeWorkout) return confirmExitWorkout(back);
+    closeModal(back);
+  };
+  closeBtn.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();requestClose();});
+  back.addEventListener('click',ev=>{if(ev.target===back)requestClose();});
+  document.body.appendChild(back);
+  setTimeout(()=>closeBtn.focus({preventScroll:true}),0);
+  return back;
+}
+function closeModal(m){
+  if(!m)return;
+  m.remove();
+}
+function closeTopModal(){const ms=$$('.modal-backdrop');if(ms.length)closeModal(ms.at(-1));}
+function handleModalEscape(ev){
+  if(ev.key!=='Escape')return;
+  const ms=$$('.modal-backdrop');
+  if(!ms.length)return;
+  const top=ms.at(-1);
+  if(top.classList.contains('workout-overlay')&&activeWorkout)confirmExitWorkout(top);else closeModal(top);
+}
+document.addEventListener('keydown',handleModalEscape);
 function safetyModal(kind,val){
   const txt=kind==='knee'?'rodilla':'abdomen';openModal(`<div class="danger-box"><h3>Dolor de ${txt}: ${val}/10</h3><p>Reduce carga, rango o cambia el ejercicio. ${kind==='abd'?'Evita core y maniobras que aumenten presión abdominal.':'Evita pierna, portero y desplazamientos exigentes si hay inestabilidad.'}</p><p class="tiny">Si el dolor persiste, hay inestabilidad, dolor de pecho, mareo, falta de aire inusual o sudor frío, detén la sesión y solicita valoración profesional.</p></div>`);
 }
@@ -265,7 +293,7 @@ function startWorkout(mode){
 function showWorkoutStep(){
   const w=activeWorkout,e=EX[w.ids[w.index]],total=w.ids.length;let m=$('.modal-backdrop.workout-overlay');if(m)m.remove();
   m=openModal(`<div class="workout-head"><div><div class="eyebrow">SESIÓN ACTIVA · ${w.index+1} DE ${total}</div><h2>${e.name}</h2></div><button class="icon-btn" id="workoutInfo">?</button></div><div class="progress-track"><div style="width:${((w.index+1)/total)*100}%"></div></div><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill">Riesgo ${e.risk}</span></div><p class="muted">${e.tech}</p><div id="loggerArea">${loggerFor(e,w.records[e.id])}</div><div class="workout-actions"><button class="btn secondary" id="prevExercise" ${w.index===0?'disabled':''}>← Anterior</button><button class="btn ok" id="completeExercise">${w.index===total-1?'Terminar sesión':'✓ Terminé · siguiente'}</button></div>`, 'workout-modal');
-  m.classList.add('workout-overlay');$('.modal-close',m).onclick=()=>confirmExitWorkout(m);
+  m.classList.add('workout-overlay');
   $('#workoutInfo',m).onclick=()=>openExercise(e.id);$('#prevExercise',m).onclick=()=>{saveCurrentRecord(m,e);w.index--;showWorkoutStep();};
   $('#completeExercise',m).onclick=()=>completeCurrentExercise(m,e);
   bindLoggerControls(m,e);
@@ -309,7 +337,6 @@ function painDuringWorkout(m,e){
   saveCurrentRecord(m,e);const r=activeWorkout.records[e.id]||{},k=+r.knee||0,a=+r.abd||0;if(k<=3&&a<=3){alert('Sube el control de dolor de rodilla o abdomen para indicar dónde y cuánto duele.');return;}
   activeWorkout.painFlag=true;const msg=k>3?`Rodilla ${k}/10`:a>3?`Abdomen ${a}/10`:'Dolor';openModal(`<div class="danger-box"><h3>${msg}</h3><p>${k>3?'Este ejercicio se marca para detener/reducir. Evita continuar con pierna o portero si hay dolor o inestabilidad.':''} ${a>3?'Se bloquean movimientos que aumenten presión abdominal.':''}</p><button class="btn full" id="skipPainExercise">Saltar este ejercicio</button><button class="btn secondary full" id="continueReduced">Continuar con menos carga/rango</button></div>`);$('#skipPainExercise').onclick=()=>{closeTopModal();advanceAfterPain();};$('#continueReduced').onclick=()=>closeTopModal();
 }
-function closeTopModal(){const ms=$$('.modal-backdrop');if(ms.length)ms.at(-1).remove();}
 function advanceAfterPain(){if(activeWorkout.index<activeWorkout.ids.length-1){activeWorkout.index++;showWorkoutStep();}else finishWorkoutFlow();}
 function saveCurrentRecord(m,e){
   let r={type:e.type,knee:+($('#kneePain',m)?.value||0),abd:+($('#abdPain',m)?.value||0)};

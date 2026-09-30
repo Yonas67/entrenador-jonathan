@@ -1,3 +1,12 @@
+# Entrena · Jonathan V2.4
+
+Correcciones UX:
+- El botón ✕ ahora cierra de forma fiable incluso con modales anidados.
+- Se puede cerrar un modal tocando fuera de la tarjeta (salvo que sea una sesión activa, donde pide confirmación).
+- Escape cierra el modal superior en computadora.
+- El menú inferior muestra cursor de acción y respuesta hover en escritorio.
+- Se actualiza la caché del Service Worker para forzar la nueva versión.
+
 # Entrena · Jonathan V2
 
 PWA mobile-first para registrar entrenamiento con flujo de un ejercicio por pantalla.
