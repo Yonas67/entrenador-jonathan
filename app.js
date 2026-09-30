@@ -1,6 +1,14 @@
 const $=(s,p=document)=>p.querySelector(s);
 const $$=(s,p=document)=>[...p.querySelectorAll(s)];
 const STORE='entrenaJonathanV1';
+
+const SUPABASE_URL='https://bekhxzzwocxfkczyxnzr.supabase.co';
+const SUPABASE_KEY='sb_publishable_yjqLiQgr2kW4rbzIwFHWMw_mPOKVcig';
+const supabaseClient=window.supabase?.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+let cloudUser=null;
+let cloudTimer=null;
+let cloudStatus='local';
+
 const nowISO=()=>new Date().toISOString();
 const localKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -53,7 +61,54 @@ function load(){
     return {...clone(DEFAULT),...raw,profile:{...DEFAULT.profile,...(raw.profile||{})},settings:{...DEFAULT.settings,...(raw.settings||{})}};
   }catch(e){return clone(DEFAULT)}
 }
-function save(){localStorage.setItem(STORE,JSON.stringify(state));}
+function save(){
+  localStorage.setItem(STORE,JSON.stringify(state));
+  scheduleCloudSync();
+}
+function setCloudStatus(v){cloudStatus=v;const el=$('#cloudStatus');if(el){el.textContent=v==='synced'?'Sincronizado':v==='syncing'?'Sincronizando…':v==='error'?'Error de sincronización':'Solo en este dispositivo';el.className='pill '+(v==='synced'?'ok':v==='error'?'danger':'');}}
+function scheduleCloudSync(){if(!cloudUser||!supabaseClient)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(pushStateToCloud,700);}
+async function pushStateToCloud(){
+  if(!cloudUser||!supabaseClient)return;
+  setCloudStatus('syncing');
+  try{
+    const payload={...state,_cloudUpdatedAt:nowISO()};
+    const {error}=await supabaseClient.from('app_state').upsert({user_id:cloudUser.id,state:payload,updated_at:nowISO()},{onConflict:'user_id'});
+    if(error)throw error;
+    setCloudStatus('synced');
+  }catch(e){console.error(e);setCloudStatus('error');}
+}
+function mergeStates(local,remote){
+  const out={...clone(DEFAULT),...remote,...local};
+  out.profile={...DEFAULT.profile,...(remote.profile||{}),...(local.profile||{})};
+  out.settings={...DEFAULT.settings,...(remote.settings||{}),...(local.settings||{})};
+  out.checkins={...(remote.checkins||{}),...(local.checkins||{})};
+  out.progression={...(remote.progression||{}),...(local.progression||{})};
+  const uniq=(arr=[])=>{const seen=new Set();return arr.filter(x=>{const k=JSON.stringify(x);if(seen.has(k))return false;seen.add(k);return true;});};
+  out.sessions=uniq([...(remote.sessions||[]),...(local.sessions||[])]).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+  out.weightLog=uniq([...(remote.weightLog||[]),...(local.weightLog||[])]);
+  out.notes=uniq([...(remote.notes||[]),...(local.notes||[])]);
+  return out;
+}
+async function pullAndMergeCloud(){
+  if(!cloudUser||!supabaseClient)return;
+  setCloudStatus('syncing');
+  try{
+    const {data,error}=await supabaseClient.from('app_state').select('state').eq('user_id',cloudUser.id).maybeSingle();
+    if(error)throw error;
+    if(data?.state){state=mergeStates(state,data.state);localStorage.setItem(STORE,JSON.stringify(state));}
+    await pushStateToCloud();render();
+  }catch(e){console.error(e);setCloudStatus('error');}
+}
+async function initCloud(){
+  if(!supabaseClient)return;
+  const {data}=await supabaseClient.auth.getSession();cloudUser=data.session?.user||null;
+  if(cloudUser)await pullAndMergeCloud();
+  supabaseClient.auth.onAuthStateChange(async(_event,session)=>{cloudUser=session?.user||null;if(cloudUser)await pullAndMergeCloud();else{setCloudStatus('local');render();}});
+}
+async function authSignIn(email,password){const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;}
+async function authSignUp(email,password){const {error}=await supabaseClient.auth.signUp({email,password});if(error)throw error;}
+async function authSignOut(){await supabaseClient.auth.signOut();cloudUser=null;setCloudStatus('local');render();}
+
 function checkin(){return state.checkins[localKey()]||{sleep:3,energy:6,knee:0,abd:0,time:60,place:'gimnasio',mental:'normal'};}
 function dayRoutine(){return ROUTINE[new Date().getDay()];}
 function safeMode(ci){if(ci.knee>3||ci.abd>3)return'protect';if(ci.energy<=4||ci.sleep<=2)return'quick';if(ci.energy>=8&&ci.knee<=2&&ci.abd<=2)return'strong';return'normal';}
@@ -120,7 +175,8 @@ function renderGoalkeeper(){
   ${['gk_base','gk_catch','gk_reaction'].map(id=>`<section class="card flat exercise"><div><h3>${EX[id].name}</h3><p>${EX[id].tech}</p></div><button class="btn small secondary" data-ex="${id}">Ficha</button></section>`).join('')}`;
 }
 function renderSettings(){
-  return`<div class="section-title">Ajustes y respaldo</div><section class="card"><div class="form-row"><label>Peso actual (kg)</label><input id="profileWeight" type="number" step="0.1" value="${state.profile.weight||''}"></div><div class="form-row"><label>Hora de entrenamiento</label><input id="trainingHour" type="time" value="${state.profile.trainingHour||'19:00'}"></div><button class="btn" id="saveSettings">Guardar ajustes</button></section>
+  const authBlock=cloudUser?`<div class="row between"><div><div class="tiny">CUENTA CONECTADA</div><b>${cloudUser.email||'Usuario'}</b></div><span id="cloudStatus" class="pill ${cloudStatus==='synced'?'ok':''}">${cloudStatus==='synced'?'Sincronizado':cloudStatus==='syncing'?'Sincronizando…':cloudStatus==='error'?'Error de sincronización':'Conectado'}</span></div><p class="muted">Tus datos se guardan localmente y se sincronizan con Supabase para poder usarlos en otros dispositivos.</p><div class="grid two"><button class="btn secondary" id="syncNow">Sincronizar ahora</button><button class="btn secondary" id="signOutBtn">Cerrar sesión</button></div>`:`<h3>Sincronización en la nube</h3><p class="muted">Crea una cuenta o inicia sesión para conservar el historial entre computadora y Android. La app sigue funcionando localmente sin cuenta.</p><div class="form-row"><label>Correo</label><input id="authEmail" type="email" autocomplete="email" placeholder="tu@correo.com"></div><div class="form-row"><label>Contraseña</label><input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Mínimo 6 caracteres"></div><div class="grid two"><button class="btn" id="signInBtn">Iniciar sesión</button><button class="btn secondary" id="signUpBtn">Crear cuenta</button></div><div id="authMsg" class="tiny"></div>`;
+  return`<div class="section-title">Ajustes y respaldo</div><section class="card">${authBlock}</section><section class="card"><div class="form-row"><label>Peso actual (kg)</label><input id="profileWeight" type="number" step="0.1" value="${state.profile.weight||''}"></div><div class="form-row"><label>Hora de entrenamiento</label><input id="trainingHour" type="time" value="${state.profile.trainingHour||'19:00'}"></div><button class="btn" id="saveSettings">Guardar ajustes</button></section>
   <section class="card"><h3>Datos</h3><div class="grid two"><button class="btn secondary" id="exportJson">Respaldar JSON</button><button class="btn secondary" id="exportCsv">Exportar CSV</button></div><label class="btn secondary full file-btn">Importar respaldo<input id="importJson" type="file" accept="application/json" hidden></label></section>
   <section class="card"><h3>Notificaciones</h3><p class="muted">Los recordatorios locales dependen de que el navegador/PWA pueda ejecutarse. Para avisos garantizados con la app cerrada se requiere Web Push con backend.</p><button class="btn secondary" id="requestNotify">Permitir notificaciones</button></section>`;
 }
@@ -135,6 +191,10 @@ function bindCommon(){
   const ss=$('#saveSettings');if(ss)ss.onclick=()=>{state.profile.weight=+$('#profileWeight').value||state.profile.weight;state.profile.trainingHour=$('#trainingHour').value||'19:00';save();alert('Ajustes guardados.');};
   const ej=$('#exportJson');if(ej)ej.onclick=exportJSON;const ec=$('#exportCsv');if(ec)ec.onclick=exportCSV;const imp=$('#importJson');if(imp)imp.onchange=importJSON;
   const rn=$('#requestNotify');if(rn)rn.onclick=async()=>{if(!('Notification'in window))return alert('Este navegador no soporta notificaciones.');const p=await Notification.requestPermission();alert('Permiso: '+p);};
+  const sin=$('#signInBtn');if(sin)sin.onclick=async()=>{const email=$('#authEmail').value.trim(),password=$('#authPassword').value;const msg=$('#authMsg');try{msg.textContent='Conectando…';await authSignIn(email,password);msg.textContent='Sesión iniciada.';}catch(e){msg.textContent=e.message||'No se pudo iniciar sesión.';}};
+  const sup=$('#signUpBtn');if(sup)sup.onclick=async()=>{const email=$('#authEmail').value.trim(),password=$('#authPassword').value;const msg=$('#authMsg');try{if(password.length<6)throw new Error('Usa una contraseña de al menos 6 caracteres.');msg.textContent='Creando cuenta…';await authSignUp(email,password);msg.textContent='Cuenta creada. Si Supabase solicita confirmar correo, revisa tu bandeja.';}catch(e){msg.textContent=e.message||'No se pudo crear la cuenta.';}};
+  const sync=$('#syncNow');if(sync)sync.onclick=()=>pullAndMergeCloud();
+  const so=$('#signOutBtn');if(so)so.onclick=()=>authSignOut();
 }
 function openModal(html,cls=''){const t=$('#modalTpl').content.cloneNode(true);const card=$('.modal-card',t);if(cls)card.classList.add(cls);$('.modal-body',t).innerHTML=html;document.body.appendChild(t);const back=$('.modal-backdrop');$('.modal-close',back).onclick=()=>closeModal(back);return back;}
 function closeModal(m){if(restTimer){clearInterval(restTimer);restTimer=null;}m?.remove();}
@@ -257,5 +317,6 @@ function download(name,txt,type){const a=document.createElement('a');a.href=URL.
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('#installBtn').classList.remove('hidden');});
 $('#installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('#installBtn').classList.add('hidden');};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+initCloud();
 setInterval(()=>{if('Notification'in window&&Notification.permission==='granted'&&state.settings.notify){const[h,m]=state.profile.trainingHour.split(':').map(Number),d=new Date(),key='notified-'+localKey();if(d.getHours()===h&&d.getMinutes()===m&&!sessionStorage.getItem(key)){new Notification('Entrena · Jonathan',{body:'Haz la versión que puedas cumplir hoy.'});sessionStorage.setItem(key,'1');}}},30000);
 render();
