@@ -46,7 +46,7 @@ const ROUTINE={
 };
 const DEFAULT={
   profile:{name:'Jonathan',height:1.73,weight:140,waist:'',goal:'Bajar grasa, preservar/ganar músculo y mejorar condición',trainingHour:'19:00',messageTone:'Firme'},
-  checkins:{},sessions:[],weightLog:[],progression:{},notes:[],settings:{notify:true,weekStart:1}
+  checkins:{},sessions:[],weightLog:[],progression:{},notes:[],customWorkouts:[],settings:{notify:true,weekStart:1}
 };
 let state=load();
 let route='today';
@@ -150,6 +150,24 @@ function progressStats(){
   return{completed,cardio,vol,avgPain:pains.length?(pains.reduce((a,b)=>a+b,0)/pains.length).toFixed(1):'0.0'};
 }
 function modeLabel(m){return m==='protect'?'Protección':m==='quick'?'Modo rápido':m==='strong'?'Modo fuerte controlado':'Modo normal';}
+function sessionVolume(s){return (s.sets||[]).reduce((z,r)=>z+(+r.weight||0)*(+r.reps||0),0);}
+function e1rm(weight,reps){weight=+weight||0;reps=+reps||0;return weight&&reps?weight*(1+reps/30):0;}
+function strengthInsights(){
+  const all=state.sessions.flatMap(s=>(s.sets||[]).filter(r=>r.done!==false&&(+r.weight||0)>0));
+  const bestBy={};
+  for(const r of all){const est=e1rm(r.weight,r.reps);if(!bestBy[r.exerciseId]||est>bestBy[r.exerciseId].e1rm)bestBy[r.exerciseId]={...r,e1rm:est};}
+  const recentCut=Date.now()-7*864e5,prevCut=Date.now()-14*864e5;
+  const recent=state.sessions.filter(s=>new Date(s.date).getTime()>=recentCut).reduce((a,s)=>a+sessionVolume(s),0);
+  const prev=state.sessions.filter(s=>{const t=new Date(s.date).getTime();return t>=prevCut&&t<recentCut}).reduce((a,s)=>a+sessionVolume(s),0);
+  const delta=prev?((recent-prev)/prev*100):null;
+  return{bestBy,recent,prev,delta};
+}
+function historyDays(n=84){
+  const counts={};state.sessions.forEach(s=>{const k=s.localDate||String(s.date||'').slice(0,10);if(k)counts[k]=(counts[k]||0)+1;});
+  const days=[];for(let i=n-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=localKey(d);days.push({k,count:counts[k]||0});}return days;
+}
+function equipTokens(e){return String(e.equip||'').toLowerCase().split(/[,/+·]/).map(x=>x.trim()).filter(Boolean);}
+function safeExercise(e){const ci=checkin();if(ci.knee>3&&['Pierna','Pantorrilla','Portero'].includes(e.group))return false;if(ci.abd>3&&String(e.abd).toLowerCase().includes('medio'))return false;return e.risk!=='Alto';}
 function sliderField(label,key,value,min,max){return`<div><label>${label}: <b data-val="${key}">${value}</b></label><input type="range" min="${min}" max="${max}" value="${value}" data-ci="${key}"></div>`;}
 function render(){
   $$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.route===route));
@@ -179,20 +197,32 @@ function renderToday(){
 }
 function renderRoutine(){
   const days=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-  return`<div class="section-title">Semana adaptativa</div>${[1,2,3,4,5,6,0].map(d=>`<section class="card flat"><div class="row between"><div><div class="tiny">${days[d]}</div><h3>${ROUTINE[d].name}</h3><p class="muted">${ROUTINE[d].ids.map(id=>EX[id].name).join(' · ')}</p></div><button class="btn small secondary" data-day="${d}">Ver</button></div></section>`).join('')}`;
+  return`<section class="card hero routine-builder-hero"><div class="row between"><div><div class="eyebrow">CREADOR RÁPIDO</div><h2>Arma una sesión en 3 pasos</h2><p class="muted">Inspirado en la simplicidad de Workout.cool: equipo → músculo → ejercicios. Tu capa de seguridad filtra lo que no conviene hoy.</p></div><span class="pill ok">Personalizado</span></div><button class="btn" id="openBuilder">Crear entrenamiento</button></section>
+  <div class="section-title">Semana adaptativa</div>${[1,2,3,4,5,6,0].map(d=>`<section class="card flat"><div class="row between"><div><div class="tiny">${days[d]}</div><h3>${ROUTINE[d].name}</h3><p class="muted">${ROUTINE[d].ids.map(id=>EX[id].name).join(' · ')}</p></div><button class="btn small secondary" data-day="${d}">Ver</button></div></section>`).join('')}
+  ${(state.customWorkouts||[]).length?`<div class="section-title">Mis sesiones</div>${state.customWorkouts.map((w,i)=>`<section class="card flat"><div class="row between"><div><div class="tiny">PERSONALIZADA</div><h3>${w.name}</h3><p class="muted">${w.ids.map(id=>EX[id]?.name).filter(Boolean).join(' · ')}</p></div><button class="btn small" data-custom-start="${i}">Iniciar</button></div></section>`).join('')}`:''}`;
 }
 function renderExercises(){
-  return`<div class="section-title">Biblioteca</div>${EXERCISES.map(e=>`<section class="card flat exercise"><div><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill">Riesgo ${e.risk}</span></div><h3>${e.name}</h3><p>${e.group} · ${e.equip}</p></div><button class="btn small secondary" data-ex="${e.id}">Ficha</button></section>`).join('')}`;
+  const groups=[...new Set(EXERCISES.map(e=>e.group))].sort();
+  const equips=['Todos','Mancuernas','Máquina','Sin equipo','Caminadora','Bicicleta','Balón'];
+  return`<div class="section-title">Biblioteca</div><section class="card"><div class="exercise-filters"><input id="exerciseSearch" type="search" placeholder="Buscar ejercicio…" aria-label="Buscar ejercicio"><select id="muscleFilter"><option value="">Todos los músculos</option>${groups.map(g=>`<option>${g}</option>`).join('')}</select><select id="equipFilter">${equips.map((x,i)=>`<option value="${i?x:''}">${x}</option>`).join('')}</select></div><div class="tiny">Se muestran primero ejercicios compatibles con tu estado actual.</div></section><div id="exerciseList">${exerciseCards(EXERCISES)}</div>`;
 }
+function exerciseCards(list){return list.map(e=>`<section class="card flat exercise" data-ex-card="${e.id}" data-name="${e.name.toLowerCase()}" data-group="${e.group}" data-equip="${e.equip.toLowerCase()}"><div><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill ${safeExercise(e)?'ok':'warn'}">${safeExercise(e)?'Apto hoy':'Precaución hoy'}</span></div><h3>${e.name}</h3><p>${e.group} · ${e.equip}</p></div><button class="btn small secondary" data-ex="${e.id}">Ficha</button></section>`).join('');}
 function renderProgress(){
-  const st=progressStats(),last=state.sessions.at(-1),weights=state.weightLog||[];
-  const prev=weights.length>1?Number(weights.at(-2).weight):null;
-  const current=Number(state.profile.weight)||0;
+  const st=progressStats(),last=state.sessions.at(-1),weights=state.weightLog||[],ins=strengthInsights();
+  const prev=weights.length>1?Number(weights.at(-2).weight):null,current=Number(state.profile.weight)||0;
   const delta=prev===null?'':`${current-prev>0?'+':''}${(current-prev).toFixed(1)} kg vs registro previo`;
+  const prs=Object.entries(ins.bestBy).sort((a,b)=>b[1].e1rm-a[1].e1rm).slice(0,4);
+  const heat=historyDays(84);
   return`<div class="section-title">Progreso</div><section class="grid two">
     <div class="metric"><div class="value">${current?current.toFixed(1):'—'}</div><div class="label">peso actual · kg</div>${delta?`<div class="tiny">${delta}</div>`:''}</div>
-    <div class="metric"><div class="value">${st.completed}</div><div class="label">sesiones / 7 días</div></div><div class="metric"><div class="value">${st.cardio}</div><div class="label">min cardio / 7 días</div></div>
-  </section><section class="card"><h3>Volumen de fuerza · 7 días</h3><canvas id="volChart" class="chart" width="720" height="220"></canvas></section><section class="card"><h3>Adherencia · 7 días</h3><canvas id="adhChart" class="chart" width="720" height="220"></canvas></section>
+    <div class="metric"><div class="value">${st.completed}</div><div class="label">sesiones / 7 días</div></div>
+    <div class="metric"><div class="value">${Math.round(ins.recent)}</div><div class="label">volumen semanal</div>${ins.delta!==null?`<div class="tiny">${ins.delta>=0?'+':''}${ins.delta.toFixed(0)}% vs semana previa</div>`:''}</div>
+    <div class="metric"><div class="value">${st.cardio}</div><div class="label">min cardio / 7 días</div></div>
+  </section>
+  <section class="card"><div class="row between"><h3>Historial · 12 semanas</h3><span class="tiny">estilo calendario</span></div><div class="heatmap" aria-label="Historial de entrenamiento">${heat.map(d=>`<div class="heat-cell l${Math.min(3,d.count)}" title="${d.k}: ${d.count} sesión(es)"></div>`).join('')}</div><div class="tiny">Más intensidad = más sesiones ese día.</div></section>
+  <section class="card"><h3>Volumen de fuerza · 7 días</h3><canvas id="volChart" class="chart" width="720" height="220"></canvas></section>
+  <section class="card"><h3>Adherencia · 7 días</h3><canvas id="adhChart" class="chart" width="720" height="220"></canvas></section>
+  <section class="card"><div class="row between"><h3>Mejores marcas seguras</h3><span class="tiny">e1RM estimado, no prueba máxima</span></div>${prs.length?prs.map(([id,p])=>`<div class="pr-row"><div><b>${EX[id]?.name||id}</b><div class="tiny">${p.weight} kg × ${p.reps} reps</div></div><div class="pr-value">${p.e1rm.toFixed(1)} kg</div></div>`).join(''):'<p class="muted">Registra sesiones de fuerza para generar tendencias.</p>'}</section>
   <section class="card flat"><h3>Última sesión</h3><p class="muted">${last?`${new Date(last.date).toLocaleString('es-MX')} · ${last.routine} · ${last.durationMin||'—'} min`:'Aún no hay sesiones registradas.'}</p></section>`;
 }
 function renderGoalkeeper(){
@@ -207,6 +237,9 @@ function renderSettings(){
 }
 function bindCommon(){
   $$('.nav-btn').forEach(b=>b.onclick=()=>{route=b.dataset.route;render();});
+  const ob=$('#openBuilder');if(ob)ob.onclick=openWorkoutBuilder;
+  $$('[data-custom-start]').forEach(b=>b.onclick=()=>startCustomWorkout(+b.dataset.customStart));
+  const es=$('#exerciseSearch'),mf=$('#muscleFilter'),ef=$('#equipFilter');if(es||mf||ef){const apply=()=>{$$('[data-ex-card]').forEach(c=>{const okName=!es||c.dataset.name.includes(es.value.toLowerCase());const okMuscle=!mf||!mf.value||c.dataset.group===mf.value;const okEquip=!ef||!ef.value||c.dataset.equip.includes(ef.value.toLowerCase());c.style.display=okName&&okMuscle&&okEquip?'':'none';});};if(es)es.oninput=apply;if(mf)mf.onchange=apply;if(ef)ef.onchange=apply;}
   $$('[data-ci]').forEach(el=>el.oninput=()=>{const ci=checkin(),k=el.dataset.ci;ci[k]=el.type==='range'||el.tagName==='SELECT'&&k==='time'?+el.value:el.value;state.checkins[localKey()]=ci;save();const out=$(`[data-val="${k}"]`);if(out)out.textContent=el.value;if((k==='knee'||k==='abd')&&+el.value>3)safetyModal(k,+el.value);});
   $$('[data-start]').forEach(b=>b.onclick=()=>startWorkout(b.dataset.start));
   $$('[data-adapt]').forEach(b=>b.onclick=()=>b.dataset.adapt==='pain'?showBodyPain():adaptTired());
@@ -276,6 +309,17 @@ function adaptTired(){const ci=checkin();ci.energy=Math.min(ci.energy,4);ci.time
 function openExercise(id){
   const e=EX[id];openModal(`<h2>${e.name}</h2><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill">Rodilla ${e.knee}</span><span class="pill">Abdomen ${e.abd}</span></div><div class="section-title">Técnica</div><p>${e.tech}</p><div class="section-title">Evita</div><p>${e.errors}</p><div class="section-title">Alternativa</div><p>${e.home}</p><a class="btn secondary" href="${e.visual}" target="_blank" rel="noopener">Ver referencia visual</a>`);
 }
+function openWorkoutBuilder(){
+  let step=1,selectedEquip='',selectedGroup='',selected=[];
+  const m=openModal('<div id="builderBody"></div>');
+  const draw=()=>{
+    const body=$('#builderBody',m);
+    if(step===1){const opts=['Mancuernas','Máquina','Sin equipo','Caminadora','Bicicleta','Balón'];body.innerHTML=`<div class="eyebrow">PASO 1 DE 3</div><h2>¿Qué equipo tienes hoy?</h2><div class="choice-grid">${opts.map(x=>`<button class="choice ${selectedEquip===x?'selected':''}" data-build-equip="${x}">${x}</button>`).join('')}</div>`;$$('[data-build-equip]',m).forEach(b=>b.onclick=()=>{selectedEquip=b.dataset.buildEquip;step=2;draw();});}
+    else if(step===2){const groups=[...new Set(EXERCISES.filter(safeExercise).filter(e=>!selectedEquip||e.equip.toLowerCase().includes(selectedEquip.toLowerCase())||selectedEquip==='Sin equipo'&&e.equip.toLowerCase().includes('sin equipo')).map(e=>e.group))].sort();body.innerHTML=`<div class="eyebrow">PASO 2 DE 3</div><h2>¿Qué quieres trabajar?</h2><div class="choice-grid">${groups.map(x=>`<button class="choice" data-build-group="${x}">${x}</button>`).join('')}</div><button class="btn secondary full" id="builderBack1">← Equipo</button>`;$$('[data-build-group]',m).forEach(b=>b.onclick=()=>{selectedGroup=b.dataset.buildGroup;step=3;draw();});$('#builderBack1',m).onclick=()=>{step=1;draw();};}
+    else {const list=EXERCISES.filter(safeExercise).filter(e=>(!selectedGroup||e.group===selectedGroup)&&(!selectedEquip||e.equip.toLowerCase().includes(selectedEquip.toLowerCase())||selectedEquip==='Sin equipo'&&e.equip.toLowerCase().includes('sin equipo')));if(!selected.length)selected=list.slice(0,Math.min(5,list.length)).map(e=>e.id);body.innerHTML=`<div class="eyebrow">PASO 3 DE 3</div><h2>Personaliza tu sesión</h2><p class="muted">${selectedEquip} · ${selectedGroup}</p>${list.map(e=>`<label class="pick-ex"><input type="checkbox" value="${e.id}" ${selected.includes(e.id)?'checked':''}><span><b>${e.name}</b><small>${typeName(e.type)} · riesgo ${e.risk}</small></span></label>`).join('')||'<p class="muted">No hay ejercicios compatibles con estos filtros y tu estado actual.</p>'}<div class="grid two"><button class="btn secondary" id="builderBack2">← Atrás</button><button class="btn" id="builderSave" ${list.length?'':'disabled'}>Guardar sesión</button></div>`;$$('.pick-ex input',m).forEach(i=>i.onchange=()=>{selected=$$('.pick-ex input:checked',m).map(x=>x.value);});$('#builderBack2',m).onclick=()=>{step=2;draw();};$('#builderSave',m).onclick=()=>{selected=$$('.pick-ex input:checked',m).map(x=>x.value);if(!selected.length)return alert('Selecciona al menos un ejercicio.');const name=`${selectedGroup} · ${selectedEquip}`;state.customWorkouts=state.customWorkouts||[];state.customWorkouts.unshift({name,ids:selected,createdAt:nowISO()});state.customWorkouts=state.customWorkouts.slice(0,10);save();closeModal(m);render();};}
+  };draw();
+}
+function startCustomWorkout(i){const w=(state.customWorkouts||[])[i];if(!w)return;const old=ROUTINE[99];ROUTINE[99]={name:w.name,type:'Personalizada',ids:w.ids};startWorkout('custom',99);if(old)ROUTINE[99]=old;else delete ROUTINE[99];}
 function openRoutine(day){const r=ROUTINE[day];openModal(`<h2>${r.name}</h2>${r.ids.map(id=>`<div class="exercise"><div><h3>${EX[id].name}</h3><p>${typeName(EX[id].type)} · ${EX[id].group}</p></div><button class="btn small secondary" data-routine-ex="${id}">Ficha</button></div>`).join('')}`);$$('[data-routine-ex]').forEach(b=>b.onclick=()=>openExercise(b.dataset.routineEx));}
 function typeName(t){return({strength:'Fuerza',cardio:'Cardio',mobility:'Movilidad',breathing:'Respiración',goalkeeper:'Portero'})[t]||t;}
 function workoutExerciseIds(mode){
@@ -359,7 +403,7 @@ function finishWorkoutFlow(){
   const w=activeWorkout,duration=Math.max(1,Math.round((Date.now()-w.start)/60000));let sets=[],activities=[],cardioMin=0,maxK=0,maxA=0,volume=0;
   for(const id of w.ids){const e=EX[id],r=w.records[id];if(!r)continue;maxK=Math.max(maxK,r.knee||0);maxA=Math.max(maxA,r.abd||0);if(e.type==='strength'){for(const s of(r.sets||[])){const row={exerciseId:id,set:s.set,weight:s.weight,reps:s.reps,rpe:s.rpe,knee:r.knee||0,abd:r.abd||0,done:s.done};sets.push(row);volume+=row.weight*row.reps;}}else{activities.push({exerciseId:id,...r});if(e.type==='cardio')cardioMin+=r.minutes||0;}}
   const m=$('.workout-overlay');if(m)m.remove();const summary=openModal(`<div class="finish-badge">✓</div><h2>Sesión terminada</h2><p class="muted">Revisa el resumen antes de guardarla.</p><div class="grid two"><div class="metric"><div class="value">${duration}</div><div class="label">minutos</div></div><div class="metric"><div class="value">${w.ids.length}</div><div class="label">bloques</div></div><div class="metric"><div class="value">${Math.round(volume)}</div><div class="label">kg·reps</div></div><div class="metric"><div class="value">${cardioMin}</div><div class="label">min cardio</div></div></div><div class="pain-summary ${maxK>3||maxA>3?'danger-box':'ok-box'}"><b>Dolor máximo</b><div>Rodilla ${maxK}/10 · Abdomen ${maxA}/10</div></div><div class="form-row"><label>Nota final</label><textarea id="sessionNote" rows="3" placeholder="Cómo se sintió la sesión…"></textarea><button class="btn small secondary" id="voiceBtn">🎙️ Dictar</button></div><button class="btn ok full" id="saveFinishedSession">Guardar sesión</button><button class="btn secondary full" id="discardSession">Descartar</button>`,'summary-modal');
-  $('#voiceBtn',summary).onclick=voiceNote;$('#discardSession',summary).onclick=()=>{if(confirm('¿Descartar esta sesión?')){activeWorkout=null;closeModal(summary);}};$('#saveFinishedSession',summary).onclick=()=>{const session={date:nowISO(),localDate:localKey(),routine:w.mode==='goalkeeper'?'Portero seguro':recommendation().name,mode:w.mode,durationMin:duration,sets,activities,cardioMin,note:$('#sessionNote',summary).value,checkin:checkin(),maxKnee:maxK,maxAbd:maxA};state.sessions.push(session);applyProgression(session);save();activeWorkout=null;closeModal(summary);render();alert(maxK>3||maxA>3?'Sesión guardada. Hubo dolor >3/10: la próxima sesión debe proteger esa zona.':'Sesión guardada.');};
+  $('#voiceBtn',summary).onclick=voiceNote;$('#discardSession',summary).onclick=()=>{if(confirm('¿Descartar esta sesión?')){activeWorkout=null;closeModal(summary);}};$('#saveFinishedSession',summary).onclick=()=>{const session={date:nowISO(),localDate:localKey(),routine:w.routineName||(w.mode==='goalkeeper'?'Portero seguro':recommendation().name),mode:w.mode,durationMin:duration,sets,activities,cardioMin,note:$('#sessionNote',summary).value,checkin:checkin(),maxKnee:maxK,maxAbd:maxA};state.sessions.push(session);applyProgression(session);save();activeWorkout=null;closeModal(summary);render();alert(maxK>3||maxA>3?'Sesión guardada. Hubo dolor >3/10: la próxima sesión debe proteger esa zona.':'Sesión guardada.');};
 }
 function lastStrengthSet(id){for(let i=state.sessions.length-1;i>=0;i--){const arr=(state.sessions[i].sets||[]).filter(x=>x.exerciseId===id&&x.done!==false);if(arr.length)return arr.at(-1);}return null;}
 function applyProgression(session){
