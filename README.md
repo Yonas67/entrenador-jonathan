@@ -56,3 +56,12 @@ Las notificaciones incluidas dependen de que el navegador o la PWA pueda ejecuta
 
 ## V2.3
 Corrige sincronización de peso entre dispositivos, registra historial de peso y muestra peso actual en Progreso.
+
+
+## V2.6 · integración del HTML de referencia
+- Hero más visual con badges de objetivo, LCA y estado de nube.
+- Lista desplegable de ejercicios bloqueados por seguridad.
+- Biblioteca ampliada con jalón al pecho, remo sentado, face pull, sit-to-stand y aducción.
+- Fichas de ejercicio con técnica en viñetas, errores, alternativa y regla personal 0–3/10.
+- Registro de mediciones: peso, cintura y sueño dentro de Progreso.
+- Guía semanal más clara sin reemplazar el motor adaptativo ni el módulo de portero.

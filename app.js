@@ -26,6 +26,11 @@ const EXERCISES=[
   {id:'glute_bridge',type:'strength',name:'Puente de glúteo',group:'Glúteo',equip:'Piso/banca',risk:'Bajo',knee:'Bajo',abd:'Medio',tech:'Exhala al subir, aprieta glúteos y evita hiperextender la espalda.',errors:'Empujar con la zona lumbar o hacer presión abdominal.',home:'Igual.',visual:'https://www.youtube.com/results?search_query=puente+de+gluteo+tecnica',sets:3,reps:10,rest:90},
   {id:'hip_abduction',type:'strength',name:'Abducción de cadera',group:'Glúteo medio',equip:'Máquina/banda',risk:'Bajo',knee:'Bajo',abd:'Bajo',tech:'Movimiento corto y controlado.',errors:'Rebotar.',home:'Banda sentado.',visual:'https://www.youtube.com/results?search_query=abduccion+de+cadera+maquina+tecnica',sets:3,reps:12,rest:60},
   {id:'calf_raise',type:'strength',name:'Elevación de gemelos',group:'Pantorrilla',equip:'Máquina/mancuernas',risk:'Bajo',knee:'Bajo-medio',abd:'Bajo',tech:'Sube y baja lento con apoyo estable.',errors:'Rebotar o perder equilibrio.',home:'De pie con apoyo.',visual:'https://www.youtube.com/results?search_query=elevacion+de+gemelos+tecnica',sets:3,reps:12,rest:60},
+  {id:'lat_pulldown',type:'strength',name:'Jalón al pecho / polea alta',group:'Espalda',equip:'Máquina/polea',risk:'Bajo',knee:'Bajo',abd:'Bajo',tech:'Pecho alto, hombros abajo y lleva la barra hacia la parte alta del pecho.',errors:'Jalar detrás de la nuca, balancearte o usar impulso.',home:'Jalón con banda anclada arriba.',visual:'https://www.youtube.com/results?search_query=jalon+al+pecho+tecnica',sets:3,reps:10,rest:90},
+  {id:'seated_row',type:'strength',name:'Remo sentado / polea',group:'Espalda',equip:'Máquina/polea',risk:'Bajo',knee:'Bajo',abd:'Bajo',tech:'Espalda neutra, lleva el agarre hacia abdomen/cadera y pausa atrás.',errors:'Redondear espalda o jalar con impulso lumbar.',home:'Remo con banda o mancuerna apoyado.',visual:'https://www.youtube.com/results?search_query=remo+sentado+polea+tecnica',sets:3,reps:10,rest:90},
+  {id:'face_pull',type:'strength',name:'Face pull / pull-apart',group:'Hombro posterior',equip:'Polea/banda',risk:'Bajo',knee:'Bajo',abd:'Bajo',tech:'Codos altos sin dolor, lleva manos hacia la cara y aprieta espalda alta.',errors:'Encoger trapecios o usar demasiado peso.',home:'Pull-apart con banda.',visual:'https://www.youtube.com/results?search_query=face+pull+tecnica',sets:2,reps:12,rest:60},
+  {id:'sit_stand',type:'strength',name:'Sentarse y levantarse de banco alto',group:'Pierna',equip:'Banco/silla',risk:'Bajo-medio',knee:'Bajo-medio',abd:'Bajo',tech:'Banco alto y estable, pies firmes y rodillas alineadas; exhala al levantarte.',errors:'Rodilla hacia adentro, caer sentado o usar rango doloroso.',home:'Mismo ejercicio con silla firme.',visual:'https://www.youtube.com/results?search_query=sit+to+stand+exercise+technique',sets:3,reps:8,rest:90},
+  {id:'hip_adduction',type:'strength',name:'Aducción de cadera',group:'Aductores',equip:'Máquina/banda',risk:'Bajo',knee:'Bajo',abd:'Bajo',tech:'Movimiento lento y controlado, sin rebotes y con rango cómodo.',errors:'Forzar rango o usar carga excesiva.',home:'Aducción con banda sentado.',visual:'https://www.youtube.com/results?search_query=aduccion+cadera+maquina+tecnica',sets:2,reps:12,rest:75},
   {id:'walk',type:'cardio',name:'Caminadora suave',group:'Cardio',equip:'Caminadora',risk:'Bajo',knee:'Bajo-medio',abd:'Bajo',tech:'Ritmo conversacional, sin trotar y con zancada cómoda.',errors:'Subir velocidad o inclinación bruscamente.',home:'Caminata plana.',visual:'https://www.youtube.com/results?search_query=walking+treadmill+form',minutes:15,speed:3.5,incline:0,rpe:4},
   {id:'bike',type:'cardio',name:'Bicicleta suave',group:'Cardio',equip:'Bicicleta',risk:'Bajo',knee:'Bajo-medio',abd:'Bajo',tech:'Cadencia cómoda y resistencia baja a moderada. Rodilla sin dolor relevante.',errors:'Resistencia alta o sillín mal ajustado.',home:'Caminadora suave si la bicicleta molesta.',visual:'https://www.youtube.com/results?search_query=stationary+bike+proper+form',minutes:15,resistance:2,rpe:4},
   {id:'mobility',type:'mobility',name:'Movilidad de cadera y tobillo',group:'Movilidad',equip:'Sin equipo',risk:'Bajo',knee:'Bajo',abd:'Bajo',tech:'Rangos suaves y sin dolor. No fuerces amplitud.',errors:'Rebotes o forzar el rango.',home:'Igual.',visual:'https://www.youtube.com/results?search_query=movilidad+cadera+tobillo+principiantes',minutes:8,rpe:2},
@@ -46,7 +51,7 @@ const ROUTINE={
 };
 const DEFAULT={
   profile:{name:'Jonathan',height:1.73,weight:140,waist:'',goal:'Bajar grasa, preservar/ganar músculo y mejorar condición',trainingHour:'19:00',messageTone:'Firme'},
-  checkins:{},sessions:[],weightLog:[],progression:{},notes:[],customWorkouts:[],settings:{notify:true,weekStart:1}
+  checkins:{},sessions:[],weightLog:[],metricLog:[],progression:{},notes:[],customWorkouts:[],settings:{notify:true,weekStart:1}
 };
 let state=load();
 let route='today';
@@ -176,9 +181,12 @@ function render(){
 }
 function renderToday(){
   const ci=checkin(),r=recommendation(ci),st=progressStats();
-  return`<section class="card hero">
+  const cloudText=cloudUser?'☁️ nube activa':'📱 guardado local';
+  const blocked=['Curtsy','Búlgara','Saltos','Burpees','Correr','Giros explosivos','Russian twist','Plancha prolongada','Swing'];
+  return`<section class="card hero hero-plan">
     <div class="row between"><span class="pill ${r.mode==='protect'?'danger':r.mode==='quick'?'warn':'ok'}">${modeLabel(r.mode)}</span><span class="tiny">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'short'})}</span></div>
     <h2>${r.name}</h2><p class="muted">${r.reason}</p>
+    <div class="hero-badges"><span class="pill">🎯 rápido pero sostenible</span><span class="pill">🦵 LCA protegido</span><span class="pill">${cloudText}</span></div>
     <div class="quick-actions"><button class="btn" data-start="full">Empezar rutina</button><button class="btn secondary" data-start="quick">30 min</button><button class="btn secondary" data-adapt="tired">Estoy cansado</button><button class="btn secondary" data-adapt="pain">Me duele algo</button></div>
   </section>
   <div class="section-title">Estado del cuerpo</div>
@@ -193,12 +201,13 @@ function renderToday(){
     <div class="metric"><div class="value">${Math.round(st.vol)}</div><div class="label">kg·reps volumen</div></div>
     <div class="metric"><div class="value">${st.avgPain}</div><div class="label">dolor rodilla prom.</div></div>
   </section>
-  <section class="card flat"><div class="row between"><div><b>Regla de seguridad activa</b><div class="tiny">Dolor &gt;3/10 o inestabilidad = reducir, cambiar o detener.</div></div><span class="status-dot ok"></span></div></section>`;
+  <section class="card flat safety-strip"><div class="row between"><div><b>Regla de seguridad activa</b><div class="tiny">Dolor &gt;3/10 o inestabilidad = reducir, cambiar o detener.</div></div><span class="status-dot ok"></span></div></section>
+  <details class="card flat blocked-details"><summary><b>Bloqueados por ahora</b> · ver lista</summary><p class="muted">${blocked.join(' · ')}</p></details>`;
 }
 function renderRoutine(){
   const days=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   return`<section class="card hero routine-builder-hero"><div class="row between"><div><div class="eyebrow">CREADOR RÁPIDO</div><h2>Arma una sesión en 3 pasos</h2><p class="muted">Inspirado en la simplicidad de Workout.cool: equipo → músculo → ejercicios. Tu capa de seguridad filtra lo que no conviene hoy.</p></div><span class="pill ok">Personalizado</span></div><button class="btn" id="openBuilder">Crear entrenamiento</button></section>
-  <div class="section-title">Semana adaptativa</div>${[1,2,3,4,5,6,0].map(d=>`<section class="card flat"><div class="row between"><div><div class="tiny">${days[d]}</div><h3>${ROUTINE[d].name}</h3><p class="muted">${ROUTINE[d].ids.map(id=>EX[id].name).join(' · ')}</p></div><button class="btn small secondary" data-day="${d}">Ver</button></div></section>`).join('')}
+  <section class="card flat weekly-guide"><div class="row between"><div><div class="eyebrow">GUÍA DE LA SEMANA</div><h3>4 estímulos de fuerza + cardio/movilidad + portero</h3><p class="muted">Fuerza prioritaria, cardio conversacional y progresión sin saltos bruscos. Si la adherencia baja o aparece dolor, la app reduce volumen.</p></div><span class="pill ok">8 semanas</span></div></section><div class="section-title">Semana adaptativa</div>${[1,2,3,4,5,6,0].map(d=>`<section class="card flat"><div class="row between"><div><div class="tiny">${days[d]}</div><h3>${ROUTINE[d].name}</h3><p class="muted">${ROUTINE[d].ids.map(id=>EX[id].name).join(' · ')}</p></div><button class="btn small secondary" data-day="${d}">Ver</button></div></section>`).join('')}
   ${(state.customWorkouts||[]).length?`<div class="section-title">Mis sesiones</div>${state.customWorkouts.map((w,i)=>`<section class="card flat"><div class="row between"><div><div class="tiny">PERSONALIZADA</div><h3>${w.name}</h3><p class="muted">${w.ids.map(id=>EX[id]?.name).filter(Boolean).join(' · ')}</p></div><button class="btn small" data-custom-start="${i}">Iniciar</button></div></section>`).join('')}`:''}`;
 }
 function renderExercises(){
@@ -220,6 +229,7 @@ function renderProgress(){
     <div class="metric"><div class="value">${st.cardio}</div><div class="label">min cardio / 7 días</div></div>
   </section>
   <section class="card"><div class="row between"><h3>Historial · 12 semanas</h3><span class="tiny">estilo calendario</span></div><div class="heatmap" aria-label="Historial de entrenamiento">${heat.map(d=>`<div class="heat-cell l${Math.min(3,d.count)}" title="${d.k}: ${d.count} sesión(es)"></div>`).join('')}</div><div class="tiny">Más intensidad = más sesiones ese día.</div></section>
+  <section class="card"><div class="row between"><div><h3>Mediciones</h3><p class="muted">Peso, cintura y sueño para ver tendencias más allá de la báscula.</p></div><button class="btn small secondary" id="openMetric">Registrar</button></div>${(state.metricLog||[]).length?`<div class="grid three compact"><div class="metric"><div class="value">${state.metricLog.at(-1).weight||'—'}</div><div class="label">kg</div></div><div class="metric"><div class="value">${state.metricLog.at(-1).waist||'—'}</div><div class="label">cintura cm</div></div><div class="metric"><div class="value">${state.metricLog.at(-1).sleep||'—'}</div><div class="label">sueño h</div></div></div>`:'<div class="tiny">Aún no hay mediciones adicionales.</div>'}</section>
   <section class="card"><h3>Volumen de fuerza · 7 días</h3><canvas id="volChart" class="chart" width="720" height="220"></canvas></section>
   <section class="card"><h3>Adherencia · 7 días</h3><canvas id="adhChart" class="chart" width="720" height="220"></canvas></section>
   <section class="card"><div class="row between"><h3>Mejores marcas seguras</h3><span class="tiny">e1RM estimado, no prueba máxima</span></div>${prs.length?prs.map(([id,p])=>`<div class="pr-row"><div><b>${EX[id]?.name||id}</b><div class="tiny">${p.weight} kg × ${p.reps} reps</div></div><div class="pr-value">${p.e1rm.toFixed(1)} kg</div></div>`).join(''):'<p class="muted">Registra sesiones de fuerza para generar tendencias.</p>'}</section>
@@ -246,6 +256,7 @@ function bindCommon(){
   $$('[data-ex]').forEach(b=>b.onclick=()=>openExercise(b.dataset.ex));
   $$('[data-day]').forEach(b=>b.onclick=()=>openRoutine(+b.dataset.day));
   const g=$('#startGoalkeeper');if(g)g.onclick=()=>startWorkout('goalkeeper');
+  const om=$('#openMetric');if(om)om.onclick=openMetricModal;
   const ss=$('#saveSettings');if(ss)ss.onclick=()=>{
     const newWeight=Number($('#profileWeight').value);
     if(Number.isFinite(newWeight)&&newWeight>0&&newWeight!==Number(state.profile.weight)){
@@ -263,6 +274,10 @@ function bindCommon(){
   const sup=$('#signUpBtn');if(sup)sup.onclick=async()=>{const email=$('#authEmail').value.trim(),password=$('#authPassword').value;const msg=$('#authMsg');try{if(password.length<6)throw new Error('Usa una contraseña de al menos 6 caracteres.');msg.textContent='Creando cuenta…';await authSignUp(email,password);msg.textContent='Cuenta creada. Si Supabase solicita confirmar correo, revisa tu bandeja.';}catch(e){msg.textContent=e.message||'No se pudo crear la cuenta.';}};
   const sync=$('#syncNow');if(sync)sync.onclick=()=>pullAndMergeCloud();
   const so=$('#signOutBtn');if(so)so.onclick=()=>authSignOut();
+}
+function openMetricModal(){
+  const m=openModal(`<h2>Registrar medición</h2><div class="grid three compact"><div class="form-row"><label>Peso kg</label><input id="metricWeight" type="number" step="0.1" value="${state.profile.weight||''}"></div><div class="form-row"><label>Cintura cm</label><input id="metricWaist" type="number" step="0.1" value="${state.profile.waist||''}"></div><div class="form-row"><label>Sueño h</label><input id="metricSleep" type="number" step="0.1" placeholder="7.5"></div></div><button class="btn ok full" id="saveMetricBtn">Guardar medición</button>`);
+  $('#saveMetricBtn',m).onclick=()=>{const weight=+$('#metricWeight',m).value||null,waist=+$('#metricWaist',m).value||null,sleep=+$('#metricSleep',m).value||null;if(weight){state.profile.weight=weight;state.weightLog=state.weightLog||[];const day=localKey();state.weightLog=state.weightLog.filter(x=>x.date!==day);state.weightLog.push({date:day,weight,timestamp:nowISO()});}if(waist)state.profile.waist=waist;state.metricLog=state.metricLog||[];state.metricLog.push({date:localKey(),timestamp:nowISO(),weight,waist,sleep});save();closeModal(m);render();};
 }
 function openModal(html,cls=''){
   const t=$('#modalTpl').content.cloneNode(true);
@@ -306,8 +321,10 @@ function promptPainLevel(kind,parent){
   $$('[data-level]',parent).forEach(b=>b.onclick=()=>{const ci=checkin();ci[kind]=+b.dataset.level;state.checkins[localKey()]=ci;save();closeModal(parent);render();if(+b.dataset.level>3)safetyModal(kind,+b.dataset.level);});
 }
 function adaptTired(){const ci=checkin();ci.energy=Math.min(ci.energy,4);ci.time=30;state.checkins[localKey()]=ci;save();render();}
+function exerciseFigure(e){const icon=({Pecho:'🏋️',Espalda:'🚣',Hombro:'💪','Hombro posterior':'🎯',Pierna:'🦵',Isquios:'🧲',Glúteo:'🍑','Glúteo medio':'↗️',Aductores:'↘️',Pantorrilla:'🦶',Cardio:'🚶',Movilidad:'🧘',Respiración:'🌬️',Portero:'🧤'})[e.group]||'🏃';return `<div class="exercise-visual"><span>${icon}</span><div><b>${e.group}</b><small>${e.equip}</small></div></div>`;}
 function openExercise(id){
-  const e=EX[id];openModal(`<h2>${e.name}</h2><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill">Rodilla ${e.knee}</span><span class="pill">Abdomen ${e.abd}</span></div><div class="section-title">Técnica</div><p>${e.tech}</p><div class="section-title">Evita</div><p>${e.errors}</p><div class="section-title">Alternativa</div><p>${e.home}</p><a class="btn secondary" href="${e.visual}" target="_blank" rel="noopener">Ver referencia visual</a>`);
+  const e=EX[id];const cues=String(e.tech).split(/[,.;]/).map(x=>x.trim()).filter(Boolean).slice(0,4);const avoids=String(e.errors).split(/[,.;]/).map(x=>x.trim()).filter(Boolean);
+  openModal(`<h2>${e.name}</h2><div class="row wrap"><span class="pill">${typeName(e.type)}</span><span class="pill">Rodilla ${e.knee}</span><span class="pill">Abdomen ${e.abd}</span></div>${exerciseFigure(e)}<div class="section-title">Técnica clave</div><ul class="cue-list">${cues.map(x=>`<li>${x}</li>`).join('')}</ul><div class="section-title">Evita</div><ul class="cue-list danger-list">${avoids.map(x=>`<li>${x}</li>`).join('')}</ul><div class="section-title">Alternativa</div><p>${e.home}</p><div class="ok-box"><b>Regla personal</b><div class="tiny">Rodilla y abdomen 0–3/10. Si sube, baja rango/carga o suspende.</div></div><a class="btn secondary full" href="${e.visual}" target="_blank" rel="noopener">🎥 Ver referencia visual</a>`);
 }
 function openWorkoutBuilder(){
   let step=1,selectedEquip='',selectedGroup='',selected=[];

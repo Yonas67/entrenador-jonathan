@@ -6,3 +6,13 @@
 
 /* V2.5 · inspiration from modern workout builders */
 .exercise-filters{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}.exercise-filters input,.exercise-filters select{width:100%}.heatmap{display:grid;grid-template-columns:repeat(21,1fr);gap:5px;margin:14px 0}.heat-cell{aspect-ratio:1;border-radius:4px;background:#17202c;border:1px solid rgba(255,255,255,.03)}.heat-cell.l1{background:#294a3a}.heat-cell.l2{background:#347253}.heat-cell.l3{background:#4b9b70}.pr-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}.pr-row:last-child{border-bottom:0}.pr-value{font-size:20px;font-weight:800}.choice-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}.choice{min-height:64px;border:1px solid var(--line);background:#151e29;color:var(--text);border-radius:16px;padding:12px;font-weight:700;cursor:pointer}.choice:hover,.choice.selected{background:#202d3d;border-color:#6a88a8}.pick-ex{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--line);border-radius:14px;margin:8px 0;background:#0e151d;cursor:pointer}.pick-ex input{margin-top:4px;transform:scale(1.15)}.pick-ex span{display:flex;flex-direction:column;gap:3px}.pick-ex small{color:var(--muted)}.routine-builder-hero{overflow:hidden}@media(max-width:700px){.exercise-filters{grid-template-columns:1fr}.heatmap{grid-template-columns:repeat(14,1fr)}.choice-grid{grid-template-columns:1fr 1fr}}
+
+/* V2.6 · mejoras tomadas del HTML de referencia */
+.hero-plan{background:linear-gradient(135deg,#111827,#182433 58%,#0e4f63);border-color:rgba(125,211,252,.16)}
+.hero-badges{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 14px}.hero-badges .pill{background:rgba(255,255,255,.055)}
+.blocked-details summary{cursor:pointer;color:var(--warn);list-style:none}.blocked-details summary::-webkit-details-marker{display:none}.blocked-details summary:after{content:' ▾';color:var(--muted)}
+.weekly-guide{border-color:rgba(53,208,127,.22)}
+.exercise-visual{min-height:92px;margin:14px 0;background:linear-gradient(135deg,#0f151d,#172333);border:1px solid var(--line);border-radius:16px;display:flex;align-items:center;justify-content:center;gap:14px}.exercise-visual>span{font-size:42px}.exercise-visual b{display:block;font-size:16px}.exercise-visual small{display:block;color:var(--muted);margin-top:3px}
+.cue-list{margin:0;padding-left:20px;color:#d8dee8}.cue-list li{margin:7px 0;line-height:1.4}.danger-list li::marker{color:var(--danger)}
+.safety-strip{border-color:rgba(53,208,127,.2)}
+@media(max-width:600px){.hero-badges .pill{font-size:11px}.exercise-visual{min-height:82px}.exercise-visual>span{font-size:36px}}
